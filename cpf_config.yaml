@@ -8,7 +8,7 @@ belief_confidence_margin: 5
 
 tau_low_pass_filter_config:
   h: 0.01
-  w_cutoff: "inf"  #62.831 # 10 * 2 * pi
+  w_cutoff: 62.831 # 10 * 2 * pi
 
 friction_coefficient: 1.0
 

@@ -7,11 +7,14 @@ import scipy.sparse as sparse
 
 from pydrake.multibody.tree import JacobianWrtVariable
 
-from contact_particle_filter.utils_cython import *
-from contact_particle_filter.utils import *
-from plan_runner.low_pass_filter import LowPassFilter
+# from contact_particle_filter.utils_cython import *
+# from contact_particle_filter.utils import *
+from utils_cython import *
+from utils import *
+# from plan_runner.low_pass_filter import LowPassFilter
 
-import contact_particle_filter.emosqp as emosqp
+# import emosqp as emosqp
+import osqp
 
 
 class ContactParticleFilter:
@@ -216,6 +219,8 @@ class ContactParticleFilter:
     def RunContactParticleFilter(self, q, tau_external_raw):
         self.tau_filter.update(tau_external_raw)
         tau_external = self.tau_filter.get_current_state()
+        print(f"Value of tau_external:\n{tau_external}")
+        print(f"Value of tau_external_raw:\n{tau_external_raw}")
 
         if np.max(np.abs(tau_external)) < self.tau_detection_margin:
             self.has_contact = False
@@ -249,7 +254,7 @@ class ContactParticleFilter:
                     context=self.context,
                     with_respect_to=JacobianWrtVariable.kQDot,
                     frame_B=self.link_frames[idx_link],
-                    p_BP=X_LB.multiply(points_new[l]),
+                    p_BoBp_B=X_LB.multiply(points_new[l]),
                     frame_A=self.plant.world_frame(),
                     frame_E=self.plant.world_frame())[3:]
 
@@ -257,15 +262,45 @@ class ContactParticleFilter:
                 Q = Q_half.T.dot(Q_half)
                 b = - Q_half.T.dot(tau_external)
 
-                # solve QP using pre-compiled code
-                emosqp.update_P(GetUpperTriangularDataAlongColumn(Q), None, 0)
-                emosqp.update_lin_cost(b)
-                results = emosqp.solve()
+                # setup QP using osqp
+                prob = osqp.OSQP()
+                Qs = GetUpperTriangularDataAlongColumn(Q)
+                # P = sparse.csc_matrix(
+                #     (Qs, (np.arange(Qs.shape[0]), np.arange(Qs.shape[0]))))
 
-                if results[2] == 1:
-                    f = results[0]
+                # P is supposed to be Jc.T.dot(Jc)
+                P = sparse.csc_matrix(Q)
+                A = sparse.csc_matrix(np.eye(self.nd))
+                # Print the sizes of the matrices
+                # print(f"Size of Jc: {Jc.shape}")
+                # print(f"Size of vC: {vC.shape}")
+                # print(f"Size of Q_half: {Q_half.shape}")
+                # print(f"Size of Q: {Q.shape}")
+                # print(f"Size of tau_external: {tau_external.shape}")
+                # print(f"Size of b: {b.shape}")
+                # print(f"Size of A: {A.shape}")
+                # print(f"Size of Qs: {Qs.shape}")
+                # print(f"Size of P: {P.shape}")
+                # print(f"Value of Q_half:\n{Q_half}")
+                # print(f"Value of P:\n{P}")
+                # print(f"Value of b:\n{b}")
+                # print(f"Value of tau_external:\n{tau_external}")
+                # print(f"Value of A:\n{A}")
+                prob.setup(P, b, A, np.zeros(self.nd), np.full(self.nd, np.inf),
+                           verbose=False)
+                results = prob.solve()
+
+                # solve QP using pre-compiled code
+                # emosqp.update_P(GetUpperTriangularDataAlongColumn(Q), None, 0)
+                # emosqp.update_lin_cost(b)
+                # results = emosqp.solve()
+
+                if results.info.status == 'solved':
+                    f = results.x
                     f_W_particles[l] = np.sum(vC * f, axis=1)
                     optimal_values[l] += (0.5 * f.dot(Q.dot(f)) + f.dot(b))
+                    # print(f"Value of f: {f}")
+                    # print(f"Value of optimal_values[{l}]: {optimal_values[l]}")
                 else:
                     optimal_values[l] = np.inf
 
@@ -356,4 +391,20 @@ class ContactParticleFilter:
             self.f_W_particles[self.link_particle_indices_list[i_max]], axis=0)
         return num_contacts, closest_points, f_Ws, link_idx, normal, triangle_id
 
+def low_pass_filter(signal, window_size):
+    return np.convolve(signal, np.ones(window_size) / window_size, mode='same')
 
+
+class LowPassFilter:
+    def __init__(self, dimension, h, w_cutoff):
+        self.dimension = dimension
+        self.h = h
+        self.w_cutoff = w_cutoff
+        self.state = np.zeros(dimension)
+        self.alpha = self.h * self.w_cutoff / (1 + self.h * self.w_cutoff)
+
+    def update(self, new_value):
+        self.state = self.alpha * new_value + (1 - self.alpha) * self.state
+
+    def get_current_state(self):
+        return self.state

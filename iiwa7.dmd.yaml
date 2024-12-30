@@ -1,0 +1,15 @@
+directives:
+- add_model:
+    name: iiwa
+    file: package://drake_models/iiwa_description/sdf/iiwa7_no_collision.sdf
+    default_joint_positions:
+        iiwa_joint_1: [-2.70259771]
+        iiwa_joint_2: [-0.79111421]
+        iiwa_joint_3: [-0.57397568]
+        iiwa_joint_4: [1.86064877]
+        iiwa_joint_5: [0.65323578]
+        iiwa_joint_6: [-0.68678464]
+        iiwa_joint_7: [-0.52174789]
+- add_weld:
+    parent: world
+    child: iiwa::iiwa_link_0

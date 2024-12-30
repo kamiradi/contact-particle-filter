@@ -1,17 +1,26 @@
 
 #%%
+import sys
+import os
+sys.path.insert(0, os.getcwd())
 import trimesh
 import meshcat
 import lcm
-from contact_particle_filter.contact_particle_filter_core import (
+# from contact_particle_filter.contact_particle_filter_core import (
+#     ContactParticleFilter)
+from contact_particle_filter_core import (
     ContactParticleFilter)
-from contact_particle_filter.lcmt_contact_particle_filter import lcmt_contact_position
+# from contact_particle_filter.lcmt_contact_particle_filter import lcmt_contact_position
 from drake import lcmt_iiwa_status
+from pydrake.all import (JacobianWrtVariable)
 
-from contact_particle_filter.utils import *
-from contact_particle_filter.contact_visualizer import *
+# from contact_particle_filter.utils import *
+# from contact_particle_filter.contact_visualizer import *
+from utils import *
+from contact_visualizer import *
 
 q0 = [0, 0, 0, -1.75, 0, 1.0, 0]
+# q0 = [-2.70259771, -0.79111421, -0.57397568, 1.86064877, 0.65323578, -0.68678464, -0.52174789]
 
 cpf = ContactParticleFilter()
 cpf.UpdateLinkPoses(q0)
@@ -23,10 +32,18 @@ mesh = trimesh.load(
 points_true = np.array([[0, 0, 0.11]])
 points_true, distance, triangle_id = \
     trimesh.proximity.closest_point(mesh, points_true)
-J_WL7 = cpf.plant.CalcFrameGeometricJacobianExpressedInWorld(
+# J_WL7 = cpf.plant.CalcFrameGeometricJacobianExpressedInWorld(
+#     context=cpf.context,
+#     frame_B=cpf.link_frames[link_idx],
+#     p_BoFo_B=points_true[0])[3:]
+J_WL7 = cpf.plant.CalcJacobianSpatialVelocity(
     context=cpf.context,
+    with_respect_to=JacobianWrtVariable.kQDot,
     frame_B=cpf.link_frames[link_idx],
-    p_BoFo_B=points_true[0])[3:]
+    p_BoBp_B=points_true[0],
+    frame_A=cpf.plant.world_frame(),
+    frame_E=cpf.plant.world_frame()
+)[3:]
 
 X_WL7 = cpf.pose_bundle[link_idx]
 X_WB7 = X_WL7.multiply(cpf.X_LB_list[link_idx])
@@ -36,7 +53,10 @@ normal_true_world = X_WB7.rotation().multiply(
 point_true_world = X_WB7.multiply(points_true[0])
 f_W_true = -10 * normal_true_world
 tau_external = J_WL7.T.dot(f_W_true)
+print(f"Value of f_W_true:\n{f_W_true}")
+# sys.exit()
 #%%
+print("True contact point: ", point_true_world)
 vis = meshcat.Visualizer(zmq_url="tcp://127.0.0.1:6000")
 DrawRobot(vis, cpf.pose_bundle, cpf.X_LB_list)
 DrawArrow(vis, "arrow_true",
@@ -47,9 +67,11 @@ DrawArrow(vis, "arrow_true",
 #%%
 cpf.Reset()
 while True:
+    print("Running CPF")
     cpf.RunContactParticleFilter(q0, tau_external)
     result = cpf.CalcBelief()
     if result[0] > 0:
+        print("Found contact")
         break
 
 print(np.mean(cpf.particles, axis=0))
@@ -63,7 +85,7 @@ DrawPointCloud(vis,
                points=cpf.particles,
                color=[1, 0, 0],
                X_WB=cpf.pose_bundle[link_idx[0]].multiply(
-             cpf.X_LB_list[link_idx[0]]).matrix())
+             cpf.X_LB_list[link_idx[0]]).GetAsMatrix4())
 
 DrawArrow(vis, "arrow_belief",
           origin=cpf.pose_bundle[link_idx[0]].multiply(closest_points[0]),

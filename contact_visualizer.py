@@ -3,15 +3,17 @@ import os
 import meshcat
 import numpy as np
 import yaml
-from drake import (lcmt_iiwa_status, lcmt_contact_info,)
+from drake import (lcmt_iiwa_status, lcmt_contact_results_for_viz,)
+# from drake import (lcmt_iiwa_status, lcmt_contact_info,)
 from pydrake.common.value import AbstractValue
 from pydrake.math import RollPitchYaw
 from pydrake.systems.framework import (
     LeafSystem, PublishEvent, TriggerType,
 )
-from pydrake.systems.meshcat_visualizer import AddTriad
+# from pydrake.systems.meshcat_visualizer import AddTriad
+# from pydrake.visualization import AddFrameTriadIllustration
 
-from contact_particle_filter.utils import *
+from utils import *
 
 
 def DrawArrow(vis, name, origin, direction,
@@ -84,7 +86,7 @@ def DrawRobot(vis, pose_bundle, X_WB_list, n=8):
 
     for i in range(n):
         vis["link_%d" % i].set_transform(
-            pose_bundle[i].multiply(X_WB_list[i]).matrix())
+            pose_bundle[i].multiply(X_WB_list[i]).GetAsMatrix4())
 
 
 # visualize a facet
@@ -153,7 +155,7 @@ class IiwaContactVisualizer(LeafSystem):
                                       AbstractValue.Make(lcmt_iiwa_status()))
 
         self.DeclareAbstractInputPort("contact_postion",
-                                      AbstractValue.Make(lcmt_contact_info()))
+                                      AbstractValue.Make(lcmt_contact_results_for_viz()))
         # self.DeclareAbstractInputPort('contact_discrimination',
         #     AbstractValue.Make(lcmt_contact_discrimination()))
 

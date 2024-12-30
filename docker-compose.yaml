@@ -1,0 +1,26 @@
+services:
+  contact_factor:
+    image: contact_particle:latest
+    container_name: contact_particle
+    build:
+      context: .
+      dockerfile: .docker/Dockerfile
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - TERM=xterm-256-color
+    volumes:
+      - /tmp/.X11-unix:/tml/.X11-unix:rw
+      - ${XAUTHORITY:-$HOME/.Xauthority}:/root/.Xauthority
+      - ./:/root/workspace/contact_particle_filter/
+    tty: true
+    stdin_open: true
+    network_mode: "host"
+    privileged: true
+    ulimits:
+      rtprio: 70
+      rttime: -1
+      memlock: 8428281856
+    devices:
+      - "/dev:/dev"
+    command: /bin/bash
